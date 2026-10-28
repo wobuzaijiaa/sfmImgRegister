@@ -2,8 +2,8 @@
 
 A lightweight, two-stage pipeline to register newly captured images into an existing COLMAP sparse model and interactively visualize the resulting camera poses.
 
-![Screenshot Stage 1 window](screenshot_s1.png)
-![Screenshot Stage 2 window](screenshot_s2.png)
+![Screenshot Stage 1 window](snapshot_s1.png)
+![Screenshot Stage 2 window](snapshot_s2.png)
 
 ## Motivation & Core Principle
 Sparse models and downstream 3D Gaussian Splatting (3DGS) models are typically static. If you capture new photos of an environment, they lack camera poses and cannot be placed into the existing spatial context.
