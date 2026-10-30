@@ -1,74 +1,88 @@
 # Images Registration Pipeline: SFM Images Register & PortViewer
 
-A lightweight, two-stage pipeline to register newly captured images into an existing COLMAP sparse model and interactively visualize the resulting camera poses.
+A lightweight pipeline for registering new photographs against an existing COLMAP reconstruction and browsing them in spatial context through a 3DGS viewer, without rebuilding the scene.
 
-![Screenshot Stage 1 window](snapshot_s1.png)
-![Screenshot Stage 2 window](snapshot_s2.png)
+It decouples facility-level spatial reconstruction from ongoing photographic data acquisition, enabling flexible documentation and incremental information updates for applications such as facility inspection, asset management, site surveys, and spatial information retrieval.
 
-## Motivation & Core Principle
-Sparse models and downstream 3D Gaussian Splatting (3DGS) models are typically static. If you capture new photos of an environment, they lack camera poses and cannot be placed into the existing spatial context.
+![Stage 1](snapshot_s1.png)
+![Stage 2](snapshot_s2.png)
 
-This repository bridges COLMAP and spatial visualization. Because the downstream 3DGS model is derived from the COLMAP reconstruction, newly registered camera poses can be visualized in the same spatial coordinate frame, **provided the model and exported poses preserve the same coordinate system and scale.**
+## Motivation
 
-The pipeline provides two standalone software packages to register new images, export their poses, and navigate them via a custom 2D/3D web interface.
+Spatial reconstruction and subsequent image acquisition often serve different purposes. Reconstruction prioritizes geometric coverage and visual overlap, while new photographs may focus on specific objects, details, or conditions without meeting those requirements.
 
-## Architecture & Dataflow
+This pipeline reuses an existing COLMAP reconstruction to spatially register new photographs independently of scene reconstruction. Images that cannot be registered directly, such as close-ups of assets or defects, can remain accessible through approximate **session-proxy associations**, provided at least one image in the same session is successfully registered.
 
-The pipeline is cleanly divided into two standalone software packages:
+This allows spatial context to be reused across different acquisition workflows and updated incrementally without routinely rebuilding the 3DGS scene.
 
-| Component | Role | Input | Output |
-| :--- | :--- | :--- | :--- |
-| **SFM Images Register**<br>(Stage 1 Package) | Core Registration | Existing Sparse model, DB, new images | `cameras.json`, `supersplat_manifest.json`, Session folders |
-| **PortViewer**<br>(Stage 2 Package) | Visualization Workspace | Stage 1 Output, 3DGS `.ply` model | Local HTTP Servers, Interactive 2D Overlay, `topdown.png/json` |
+## Architecture
 
-## Standard Output Format (Stage 1)
-The **SFM Images Register** outputs a timestamped folder (e.g., `imgRegister_20261012_120000/`). This folder serves as the direct input for PortViewer.
+| Component | Function |
+|---|---|
+| **SFM Images Register (Stage 1)** | Registers images using COLMAP and exports camera poses, session metadata, and images |
+| **PortViewer (Stage 2)** | Visualizes registered and session-proxy images using SuperSplat Viewer and a top-down snapshot |
+
+### Stage 1 Output
 
 ~~~text
-imgRegister_20261012_120000/
-├── cameras.json               # Camera poses (see rotation convention below)
-├── supersplat_manifest.json   # Web UI sidebar data
-├── supersplat_settings.json   # 3D annotations for the viewer
-└── sessions/                  # Grouped by capture session
+imgRegister_<timestamp>/
+├── cameras.json                 # Optional combined registered poses
+├── supersplat_manifest.json     # Session/image metadata
+├── supersplat_settings.json     # Viewer annotations
+└── sessions/
     └── <session_name>/
-        ├── cameras.json
-        └── images/            # Thumbnails for the Web UI
+        ├── cameras.json         # Registered camera poses
+        ├── report.json
+        ├── report.txt
+        ├── target.json          # When applicable
+        └── images/              # Registered and failed images
 ~~~
 
-**Data Convention Note:** In `cameras.json`, the `position` is the camera center in the world coordinate system. The `rotation` is a 3x3 matrix representing the **Camera-to-World (C2W)** rotation.
+Camera positions use COLMAP world coordinates, with 3×3 Camera-to-World (C2W) rotation matrices.
 
 ## Features
-* **Intelligent Auto-Calibration (Stage 1):** Analyzes image resolutions and EXIF data to automatically group mixed devices and adjust COLMAP matching thresholds adaptively.
-* **Robust Registration (Stage 1):** Uses COLMAP's `image_registrator` (PnP) to compute poses. Note that successful registration depends on sufficient feature overlap and good calibration.
-* **Built-in Editor & Viewer (Stage 2):** PortViewer bundles a customized SuperSplat Editor (to generate top-down snapshots) and a SuperSplat Viewer (for 3D exploration with synchronized sidebars).
-* **Top-Down 2D Overlay (Stage 2):** Reprojects 3D camera poses into a 2D orthographic snapshot. Clicking an image in the web UI instantly highlights its corresponding marker (red dot) on the 2D map.
-* **Coordinate Transformations (Stage 2):** Provides preset axis mappings (OpenGL/PlayCanvas, COLMAP/OpenCV, WebXR, Blender) to accommodate different coordinate conventions from upstream models.
 
-## Requirements (End-Users)
-* **COLMAP** (Must be downloaded separately and accessible locally. Required by Stage 1).
-* A modern web browser (Chrome or Edge) with WebGPU support (Required by Stage 2).
+- **Image registration:** Registers new images into an existing COLMAP sparse reconstruction, with camera configuration adapted to capture devices and image characteristics.
+- **Session-based organization:** Preserves image associations and registration results across capture sessions.
+- **Session-proxy visualization:** Assigns approximate locations to unregistered images using registered cameras in the same session.
+- **3D visualization:** Integrates SuperSplat Viewer for camera annotations and session-based navigation.
+- **Top-down overlay:** Projects camera positions onto an orthographic snapshot with synchronized image/session highlighting.
+- **Visual distinction:** Green for registered images, amber for session proxies, and dark red for images without poses.
+- **Local operation:** Supports offline use with locally available dependencies and Viewer/Editor assets.
+
+## Requirements
+
+- COLMAP installed locally (Stage 1).
+- Compatible 3DGS model (`.ply`, `.splat`, or `.sog`).
+- Chrome or Edge with the rendering capabilities required by the Viewer build.
+- Local SuperSplat Viewer and customized Editor assets (Stage 2).
 
 ## How to Use
 
-### Stage 1: Register New Images
-Run the **SFM Images Register** executable (e.g., `sfm_images_register_v0_1_0.exe`).
-1. Set the **Sparse Model** (`sparse/0` directory), **Database.db**, and the **Base Output dir**.
-2. Set the **New Images dir** (can contain subfolders representing different capture sessions).
-3. Locate your local **COLMAP** executable (e.g., `colmap.bat`).
-4. Click **Register Images**. The tool will attempt to register the new images and output the standard metadata folder.
+### Stage 1 — Register Images
 
-### Stage 2: Visualize with PortViewer
-Run the **PortViewer** executable (e.g., `portviewer_v0_1_0.exe`).
+Run **SFM Images Register** (`sfm_images_register_v0_1_0.exe`).
 
-**Step A: Generate the Top-Down Snapshot**
-1. Click **▶ Start Editor** in PortViewer to open the integrated SuperSplat Editor.
-2. Load your pre-trained 3DGS `.ply` model.
-3. Adjust the camera to a strict orthographic top-down view.
-4. Click **Render -> Top-Down Snapshot** to export `topdown.png` and `topdown.json`.
+1. Select the existing COLMAP sparse model and `database.db`.
+2. Select the new images directory (subfolders represent sessions).
+3. Configure COLMAP and the output directory.
+4. Click **Register Images** to generate the registration results.
 
-**Step B: Interactive Visualization**
-1. In the PortViewer GUI, select the **Output Folder** generated in Stage 1.
-2. Select your trained **3DGS Model** (`.ply`, `.splat`, `.sog`).
-3. Select the **Snapshot PNG** and **Metadata JSON** generated in Step A.
-4. Click **▶ Start Viewer**. 
-5. Use the web interface to click through images and verify their 3D positions on the 2D top-down map.
+### Stage 2 — Visualize Images
+
+Run **PortViewer** (`portviewer_v0_1_0.exe`).
+
+1. Start the customized SuperSplat Editor and load the 3DGS model.
+2. Establish an orthographic top-down view and export `topdown.png` and `topdown.json` using **Render → Top-Down Snapshot**.
+3. Select the Stage 1 output folder, 3DGS model, and snapshot files in PortViewer.
+4. Click **Start Viewer** to browse sessions, images, and spatial annotations.
+5. Select a session to highlight its top-down markers and navigate its available 3D annotations.
+
+## Scope and Limitations
+
+- Successful registration requires sufficient overlap with the existing COLMAP reconstruction.
+- Session-proxy poses are **approximate associations**, not recovered camera poses or verified object locations. Sessions without registered cameras cannot receive proxies.
+- Proxy markers use small, fixed world-space display offsets to avoid overlap; these do not alter registration data.
+- The Viewer supports up to 25 annotations. Images without individual 3D annotations remain accessible through the session browser and, when a pose is available, the top-down overlay.
+- Spatial accuracy depends on the existing reconstruction's coordinate system and scale. The pipeline does not update 3DGS geometry, identify objects, or perform image-content analysis.
+- Stage 2 proxy poses are derived at runtime and are not persisted in Stage 1 outputs.
